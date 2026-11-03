@@ -61,7 +61,8 @@ export function ThreadDetailsUsage({
   model,
   providers,
   sources,
-}: Omit<ThreadDetailsUsageInput, "contextWindow">) {
+  title,
+}: Omit<ThreadDetailsUsageInput, "contextWindow"> & { readonly title?: string }) {
   const gt = useGT();
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -71,9 +72,9 @@ export function ThreadDetailsUsage({
 
   return (
     <ThreadDetailsSection
-      headingId="thread-details-usage-heading"
-      title={gt("Usage limits")}
-      showHeading={false}
+      headingId={`thread-details-usage-heading-${providerInstanceId}`}
+      title={title ?? gt("Usage limits")}
+      showHeading={title !== undefined}
     >
       <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] gap-x-3 text-xs">
         {resolved?.kind === "pool"
