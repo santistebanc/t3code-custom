@@ -25,8 +25,8 @@ export const THREAD_DETAILS_ITEMS = [
     defaultVisible: true,
   },
   { id: "sideChats", label: msg("Side chats"), defaultVisible: true },
-  { id: "usage", label: msg("Usage limits"), defaultVisible: false },
-  { id: "context", label: msg("Context window"), defaultVisible: false },
+  { id: "usage", label: msg("Usage limits"), defaultVisible: true },
+  { id: "context", label: msg("Context window"), defaultVisible: true },
 ] as const;
 
 export type ThreadDetailsItemId = (typeof THREAD_DETAILS_ITEMS)[number]["id"];
@@ -41,7 +41,7 @@ type ThreadDetailsItemSettings = Pick<
 // People who turned on the retired Labs toggle keep Usage and Context until they change them here.
 function defaultVisible(item: ThreadDetailsItem, settings: ThreadDetailsItemSettings) {
   return item.id === "usage" || item.id === "context"
-    ? settings.threadDetailsUsageEnabled
+    ? settings.threadDetailsUsageEnabled || item.defaultVisible
     : item.defaultVisible;
 }
 
