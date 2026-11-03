@@ -16,6 +16,7 @@ import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
 import { useIssuesSupported, usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
+import { CustomBuildBadge } from "../../custom/CustomBuildBadge";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -196,6 +197,7 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
         {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product wordmark */}
         {"Code"}
       </span>
+      <CustomBuildBadge />
     </span>
   );
 }
