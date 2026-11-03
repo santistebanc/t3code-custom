@@ -18,7 +18,8 @@ param(
   [switch]$Force
 )
 
-$ErrorActionPreference = "Stop"
+# Native tools write progress to stderr; failures are caught by exit code instead.
+$ErrorActionPreference = "Continue"
 $UpstreamRepo = "pingdotgg/t3code"
 $CustomRepo = "santistebanc/t3code-custom"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -32,6 +33,12 @@ function Run([string]$what, [scriptblock]$block) {
   Write-Host "==> $what" -ForegroundColor Cyan
   & $block
   if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" }
+}
+
+# `gh release view` writes to stderr when missing, which PowerShell 5.1 turns into a terminating error.
+function CustomReleaseExists([string]$name) {
+  $tags = gh release list -R $CustomRepo --limit 100 --json tagName -q ".[].tagName"
+  return @($tags) -contains $name
 }
 
 if ((git branch --show-current) -ne "custom") { throw "Check out the 'custom' branch first." }
@@ -48,8 +55,7 @@ if (-not $base) { throw "refs/custom/base is missing. Set it with: git update-re
 
 $target = git rev-parse "$Tag^{commit}"
 if ($Publish -and -not $Force -and -not $NoRebase -and $target -eq $base) {
-  gh release view $Tag -R $CustomRepo --json tagName 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) {
+  if (CustomReleaseExists $Tag) {
     Write-Host "Up to date: $Tag is already published." -ForegroundColor Green
     exit 0
   }
@@ -70,7 +76,8 @@ if (-not $NoRebase -and $target -ne $base) {
   git update-ref refs/custom/base $Tag
 }
 
-$baseTag = git describe --tags --exact-match refs/custom/base 2>$null | Select-Object -First 1
+$baseTag = git tag --points-at refs/custom/base | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+  Select-Object -First 1
 if (-not $baseTag) { throw "refs/custom/base does not point at a release tag." }
 $version = $baseTag.TrimStart("v")
 
@@ -108,8 +115,7 @@ if ($Publish) {
   $assets = @($installer.FullName, "$($installer.FullName).blockmap", (Join-Path $releaseDir "latest.yml"))
   foreach ($asset in $assets) { if (-not (Test-Path $asset)) { throw "Missing release asset $asset" } }
   Run "Pushing the custom branch" { git push --force-with-lease origin custom }
-  gh release view $baseTag -R $CustomRepo --json tagName 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) {
+  if (CustomReleaseExists $baseTag) {
     Run "Removing the previous $baseTag release" { gh release delete $baseTag -R $CustomRepo --yes --cleanup-tag }
   }
   $notes = "Custom build of the official $baseTag release, with the commits on the custom branch."
