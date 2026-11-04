@@ -305,7 +305,7 @@ function ResetTime({
   );
 }
 
-/** Remaining usage, this thread's share, and the time left as an overlay from the left. */
+/** Remaining usage and this thread's share; a used-up bar refills toward its reset. */
 function UsageBar({
   window,
   threadPercent,
@@ -326,10 +326,6 @@ function UsageBar({
   const thread = Math.max(0, Math.min(threadPercent ?? 0, 100 - left));
   const resetsAt = window.resetsAt ? Date.parse(window.resetsAt) : Number.NaN;
   const durationMs = (window.windowDurationMins ?? 0) * MINUTE_MS;
-  const timeLeft =
-    durationMs > 0 && resetsAt > now
-      ? Math.max(0, Math.min(100, ((resetsAt - now) / durationMs) * 100))
-      : null;
   const exhausted = left <= 0;
   // A used-up weekly bar only starts refilling in the last day before its reset.
   const refillMs = secondary ? Math.min(durationMs, DAY_MS) : durationMs;
@@ -373,12 +369,6 @@ function UsageBar({
                 width: `${thread}%`,
                 background: `color-mix(in oklab, ${color} 42%, transparent)`,
               }}
-            />
-          ) : null}
-          {timeLeft !== null ? (
-            <span
-              className="absolute inset-y-0 left-0 bg-foreground/20"
-              style={{ width: `${timeLeft}%` }}
             />
           ) : null}
         </>
