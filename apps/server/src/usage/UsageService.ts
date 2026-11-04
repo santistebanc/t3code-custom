@@ -40,7 +40,12 @@ import type {
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
 import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
-import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import {
+  createOverrideRateTable,
+  parseRateTable,
+  priceUsage,
+  type RateTable,
+} from "./usagePricing.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -139,11 +144,23 @@ const decodeCachedSources = Schema.decodeUnknownOption(
   Schema.Struct({ sources: Schema.Record(Schema.String, CachedSource) }),
 );
 
+export interface InstanceUsageCost {
+  readonly timestampMs: number;
+  readonly sessionId: string;
+  readonly costUsd: number;
+  readonly totals: UsageRecord["totals"];
+}
+
 export class UsageService extends Context.Service<
   UsageService,
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /** Priced transcript usage of one provider instance since `sinceMs`, deduplicated. */
+    readonly readInstanceCosts: (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly sinceMs: number;
+    }) => Effect.Effect<ReadonlyArray<InstanceUsageCost>, UsageReadError>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -890,6 +907,68 @@ export const make = Effect.gen(function* () {
     } satisfies UsageSummary;
   });
 
+  const readInstanceCosts = Effect.fn("UsageService.readInstanceCosts")(function* (input: {
+    readonly instanceId: ProviderInstanceId;
+    readonly sinceMs: number;
+  }) {
+    const settings = yield* readSettings;
+    yield* ensureScanCacheLoaded;
+    yield* ensureRates(false);
+    const overrides = createOverrideRateTable(settings.usagePriceOverrides);
+    const aliases = resolveModelAliases(settings.usageModelAliases);
+    const costs: Array<InstanceUsageCost> = [];
+    const seen = new Set<string>();
+    for (const { driver, reader } of transcriptReaders) {
+      const instance = (yield* usageInstances(driver, settings)).find(
+        (candidate) => candidate.instanceId === input.instanceId,
+      );
+      if (instance === undefined) continue;
+      const directories = yield* reader
+        .directories(instance)
+        .pipe(Effect.provideContext(readerContext));
+      for (const { dir: directory, fileName } of directories) {
+        const dir = yield* fileSystem
+          .realPath(directory)
+          .pipe(Effect.orElseSucceed(() => directory));
+        const scanned = yield* scanTranscriptDir(
+          {
+            provider: reader.provider,
+            format: reader.format,
+            dir,
+            volumeId: "",
+            ...(fileName === undefined ? {} : { fileName }),
+          },
+          input.sinceMs - MTIME_SLACK_MS,
+        );
+        for (const file of scanned.files ?? []) {
+          for (const raw of file.records) {
+            const record = correctedRecord(raw);
+            if (record.timestampMs < input.sinceMs) continue;
+            if (record.dedupeKey !== null) {
+              if (seen.has(record.dedupeKey)) continue;
+              seen.add(record.dedupeKey);
+            }
+            const alias = aliases.get(record.model);
+            const { rateModel: _rateModel, ...unrated } = record;
+            const priced = priceUsage(
+              rates,
+              alias === undefined ? record : { ...unrated, model: alias },
+              overrides,
+            );
+            costs.push({
+              timestampMs: record.timestampMs,
+              sessionId: record.sessionId,
+              costUsd: priced.costUsd,
+              totals: record.totals,
+            });
+          }
+        }
+      }
+    }
+    if (cacheDirty) yield* schedulePersist;
+    return costs;
+  });
+
   const inflightScans = new Map<string, Deferred.Deferred<UsageSummary, UsageReadError>>();
 
   const scanKey = (input: UsageSummaryInput, settings: ServerSettingsValue): string =>
@@ -938,7 +1017,7 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  return { readSummary, refreshRates, readInstanceCosts, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);
