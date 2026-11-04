@@ -1144,6 +1144,17 @@ export function createServerEnvironmentAtoms<R, E>(
       Atom.withLabel(`environment-data:server:providers:${environmentId}`),
     ),
   );
+  // Limit updates arrive as turns spend usage, so they are the signal to re-estimate a thread.
+  const usageLimitsRevisionAtom = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) =>
+      JSON.stringify(
+        (get(providersValueAtom(environmentId)) ?? []).map((provider) => [
+          provider.instanceId,
+          provider.usageLimits?.windows.map((window) => [window.id, window.usedPercent]),
+        ]),
+      ),
+    ).pipe(Atom.withLabel(`environment-data:server:usage-limits-revision:${environmentId}`)),
+  );
   const welcomeStateFamily = Atom.family((environmentId: EnvironmentId) =>
     runtime
       .atom(serverWelcomeStateChanges(environmentId), { initialValue: null })
@@ -1352,6 +1363,12 @@ export function createServerEnvironmentAtoms<R, E>(
               ),
           ),
         ),
+    }),
+    threadUsageEstimate: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:thread-usage-estimate",
+      tag: WS_METHODS.serverGetThreadUsageEstimate,
+      staleTimeMs: 60_000,
+      refreshTrigger: ({ environmentId }) => usageLimitsRevisionAtom(environmentId),
     }),
     resourceTelemetry: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry",

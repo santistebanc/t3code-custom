@@ -255,7 +255,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 />
               ) : null}
 
-              {visible.usage ? <AllProvidersUsage {...props.usage} /> : null}
+              {visible.usage ? (
+                <AllProvidersUsage
+                  {...props.usage}
+                  environmentId={props.environmentId}
+                  threadId={props.isServerThread && !props.draftId ? props.threadId : null}
+                />
+              ) : null}
 
               {visible.context && props.usage.contextWindow ? (
                 <ThreadDetailsContext usage={props.usage.contextWindow} />
