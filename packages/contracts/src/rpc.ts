@@ -352,6 +352,7 @@ import {
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
+import { ThreadUsageEstimate, ThreadUsageEstimateInput } from "./threadUsageEstimate.ts";
 import {
   StorageCleanupReport,
   DatabaseStorageStatus,
@@ -537,6 +538,7 @@ export const WS_METHODS = {
   serverReportClientActivity: "server.reportClientActivity",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+  serverGetThreadUsageEstimate: "server.getThreadUsageEstimate",
 
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -961,6 +963,12 @@ const WsServerPrepareTriageRpc = Rpc.make(WS_METHODS.serverPrepareTriage, {
 const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSummary, {
   payload: UsageSummaryInput,
   success: UsageSummary,
+  error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
+});
+
+const WsServerGetThreadUsageEstimateRpc = Rpc.make(WS_METHODS.serverGetThreadUsageEstimate, {
+  payload: ThreadUsageEstimateInput,
+  success: ThreadUsageEstimate,
   error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
 });
 
@@ -2043,6 +2051,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerPrepareTriageRpc,
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
+  WsServerGetThreadUsageEstimateRpc,
   WsServerSignalProcessRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,
