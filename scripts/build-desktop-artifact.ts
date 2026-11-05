@@ -3653,10 +3653,21 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const appVersion = options.version ?? serverPackageJson.version;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
-  const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
-  const stageRoot = yield* mkdir({
+  const stageRoot = yield* fs.makeTempDirectory({
     prefix: `t3code-desktop-${options.platform}-stage-`,
   });
+  if (!options.keepStage) {
+    // Windows antivirus keeps the just-built exe locked for a while; a leftover temp dir must not fail the build.
+    yield* Effect.addFinalizer(() =>
+      Effect.tryPromise(() =>
+        NodeFSP.rm(stageRoot, { recursive: true, force: true, maxRetries: 12, retryDelay: 500 }),
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning(`[desktop-artifact] Could not remove ${stageRoot}: ${error}`),
+        ),
+      ),
+    );
+  }
 
   const stageAppDir = path.join(stageRoot, "app");
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
