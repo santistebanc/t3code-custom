@@ -1,4 +1,3 @@
-import { PromptContextDialog } from "./PromptContextDialog";
 import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
@@ -3578,12 +3577,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   >
                     {composerControls}
                   </div>
-                  {activeThread && (
-                    <PromptContextDialog
-                      key={`${environmentId}:${activeThread.id}`}
-                      threadRef={{ environmentId, threadId: activeThread.id }}
-                    />
-                  )}
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
