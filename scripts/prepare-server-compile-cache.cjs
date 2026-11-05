@@ -10,7 +10,7 @@ async function waitUntilWritable(file) {
       fs.closeSync(fs.openSync(file, "r+"));
       return;
     } catch (error) {
-      if (attempt >= 120 || (error.code !== "EBUSY" && error.code !== "EPERM")) throw error;
+      if (attempt >= 600 || (error.code !== "EBUSY" && error.code !== "EPERM")) throw error;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
