@@ -1428,6 +1428,56 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(
 );
 
 describe("ClaudeAdapterV2 prompt context", () => {
+  it("reports the skills, MCP tools, and instruction files a turn used", () => {
+    const entries = ClaudeAdapterV2.claudeContextReportEntries({
+      toolCalls: new Map([
+        ["Skill: tdd", 1],
+        ["mcp__t3-code__html_render", 2],
+        ["Bash", 3],
+      ]),
+      usage: {
+        categories: [
+          { name: "Memory files", tokens: 1200, color: "", kind: "used" },
+          { name: "Free space", tokens: 90000, color: "", kind: "free" },
+        ],
+        totalTokens: 1200,
+        maxTokens: 200000,
+        rawMaxTokens: 200000,
+        percentage: 1,
+        gridRows: [],
+        model: "claude-opus-5-5",
+        memoryFiles: [{ path: "/repo/CLAUDE.md", type: "Project", tokens: 1200 }],
+        mcpTools: [{ name: "html_render", serverName: "t3-code", tokens: 300, isLoaded: false }],
+        agents: [],
+        skills: {
+          totalSkills: 2,
+          includedSkills: 2,
+          tokens: 80,
+          skillFrontmatter: [{ name: "tdd", source: "userSettings", tokens: 40 }],
+        },
+        isAutoCompactEnabled: true,
+        apiUsage: null,
+      },
+      instructionTexts: new Map([["/repo/CLAUDE.md", "Use pnpm."]]),
+    });
+    assert.deepEqual(
+      entries.map((entry) => entry.source),
+      [
+        "Used this turn",
+        "Instructions (Project): /repo/CLAUDE.md",
+        "Skills available (2 of 2 listed)",
+        "MCP servers and tools",
+        "Context breakdown",
+      ],
+    );
+    assert.equal(
+      entries[0]?.text,
+      "Skills\n- tdd\n\nMCP tools\n- mcp__t3-code__html_render (×2)\n\nOther tools\n- Bash (×3)",
+    );
+    assert.equal(entries[1]?.text, "1.2k tokens\n\nUse pnpm.");
+    assert.notInclude(entries[4]?.text ?? "", "Free space");
+  });
+
   it.effect("records the system prompt T3 appended for each turn", () =>
     Effect.scoped(
       Effect.gen(function* () {

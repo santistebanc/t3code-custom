@@ -100,11 +100,10 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
           )}
         </>
       )}
-      <Text className="text-sm font-t3-medium">Not exposed by the provider</Text>
       <Text className="text-sm text-foreground-muted">
-        Built-in instructions, resolved AGENTS.md files, skills, and tool definitions are assembled
-        inside the provider runtime. This capture is not the complete model prompt. Other providers
-        do not yet support context capture.
+        Claude turns list what was used, the instruction files, skills, and MCP tools Claude Code
+        loaded, and what T3 added. Codex turns show only what T3 sent. The provider's own built-in
+        prompt is never shown.
       </Text>
     </ScrollView>
   );

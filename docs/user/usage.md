@@ -202,6 +202,8 @@ Click the **Context** row in the thread details panel to inspect the instruction
 context, and settings T3 supplied for a captured turn. Select a turn to review its saved context;
 web and desktop also let you copy the capture.
 
-Captures are available for new Codex and Claude turns. They exclude chat history and do not expose
-the provider's built-in instructions, resolved instruction files, skills, or tool definitions.
-Other providers and turns started before context capture was available have no capture.
+Claude turns show which skills, MCP tools, and other tools the turn called, plus the CLAUDE.md and
+AGENTS.md files, skills, MCP tools, and agents Claude Code had loaded. Codex turns show only the
+settings and additional context T3 sent. Captures never include chat history or the provider's own
+built-in prompt. Other providers and turns started before context capture was available have no
+capture.

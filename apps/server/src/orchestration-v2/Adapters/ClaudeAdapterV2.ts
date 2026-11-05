@@ -61,6 +61,7 @@ import {
   type SpawnedProcess as ClaudeSpawnedProcess,
   type SDKAssistantMessage,
   type SDKAPIRetryMessage,
+  type SDKControlGetContextUsageResponse,
   type SDKMessage,
   type SDKRateLimitInfo,
   type SDKResultMessage,
@@ -586,6 +587,11 @@ export interface ClaudeAgentSdkQuerySession {
   >;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** What the CLI has loaded into context, as `/context` reports it. */
+  readonly contextUsage?: Effect.Effect<
+    SDKControlGetContextUsageResponse,
+    ClaudeAgentSdkQueryRunnerError
+  >;
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -1534,6 +1540,11 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
+            contextUsage: Effect.tryPromise({
+              // Summary answers from local estimates instead of extra token-count API calls.
+              try: () => queryRuntime.getContextUsage({ detail: "summary" }),
+              catch: (cause) => queryRunnerError(cause, "getContextUsage"),
+            }),
             close: Queue.shutdown(promptQueue).pipe(
               Effect.andThen(closeClaudeQuery(queryRuntime)),
               Effect.tap(() =>
@@ -1752,6 +1763,101 @@ const subagentDeviceInstructions: HookCallback = () =>
   });
 
 const encodePromptContextSettings = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+const formatTokens = (tokens: number) =>
+  tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k tokens` : `${tokens} tokens`;
+
+/** Turns what a Claude turn used and what Claude Code had loaded into readable context entries. */
+export function claudeContextReportEntries(input: {
+  readonly toolCalls: ReadonlyMap<string, number>;
+  readonly usage: SDKControlGetContextUsageResponse | null;
+  readonly instructionTexts: ReadonlyMap<string, string>;
+}): Array<{ readonly source: string; readonly text: string }> {
+  const calls = [...input.toolCalls].map(([name, count]) => ({ name, count }));
+  const list = (items: ReadonlyArray<{ name: string; count: number }>) =>
+    items.map((item) => `- ${item.name}${item.count > 1 ? ` (×${item.count})` : ""}`).join("\n");
+  const skills = calls
+    .filter((call) => call.name.startsWith("Skill: "))
+    .map((call) => ({ ...call, name: call.name.slice("Skill: ".length) }));
+  const mcp = calls.filter((call) => call.name.startsWith("mcp__"));
+  const other = calls.filter(
+    (call) => !call.name.startsWith("Skill: ") && !call.name.startsWith("mcp__"),
+  );
+  const used = [
+    ["Skills", skills],
+    ["MCP tools", mcp],
+    ["Other tools", other],
+  ] as const;
+  const entries = [
+    {
+      source: "Used this turn",
+      text:
+        calls.length === 0
+          ? "No tools or skills were called."
+          : used
+              .filter(([, items]) => items.length > 0)
+              .map(([title, items]) => `${title}\n${list(items)}`)
+              .join("\n\n"),
+    },
+  ];
+  const usage = input.usage;
+  if (usage === null) return entries;
+  for (const file of usage.memoryFiles) {
+    entries.push({
+      source: `Instructions (${file.type}): ${file.path}`,
+      text: `${formatTokens(file.tokens)}\n\n${input.instructionTexts.get(file.path) ?? "Could not read this file."}`,
+    });
+  }
+  if (usage.skills && usage.skills.skillFrontmatter.length > 0) {
+    entries.push({
+      source: `Skills available (${usage.skills.includedSkills} of ${usage.skills.totalSkills} listed)`,
+      text: usage.skills.skillFrontmatter
+        .map((skill) => `- ${skill.name} (${skill.source}, ${formatTokens(skill.tokens)})`)
+        .join("\n"),
+    });
+  }
+  if (usage.mcpTools.length > 0) {
+    const servers = new Map<string, Array<(typeof usage.mcpTools)[number]>>();
+    for (const tool of usage.mcpTools) {
+      servers.set(tool.serverName, [...(servers.get(tool.serverName) ?? []), tool]);
+    }
+    entries.push({
+      source: "MCP servers and tools",
+      text: [...servers]
+        .map(
+          ([server, tools]) =>
+            `${server}\n${tools
+              .map(
+                (tool) =>
+                  `- ${tool.name}${tool.isLoaded === false ? " (deferred)" : ""} (${formatTokens(tool.tokens)})`,
+              )
+              .join("\n")}`,
+        )
+        .join("\n\n"),
+    });
+  }
+  if (usage.agents.length > 0) {
+    entries.push({
+      source: "Custom agents",
+      text: usage.agents
+        .map((agent) => `- ${agent.agentType} (${agent.source}, ${formatTokens(agent.tokens)})`)
+        .join("\n"),
+    });
+  }
+  entries.push({
+    source: "Context breakdown",
+    text: [
+      `${formatTokens(usage.totalTokens)} of ${formatTokens(usage.rawMaxTokens)} (${usage.percentage}%)`,
+      ...usage.categories
+        .filter((category) => category.tokens > 0 && category.kind !== "free")
+        .map(
+          (category) =>
+            `- ${category.name}: ${formatTokens(category.tokens)}${category.kind === "deferred" ? " (not in context)" : ""}`,
+        ),
+    ].join("\n"),
+  });
+  return entries;
+}
 
 export function makeClaudeQueryOptions(input: {
   readonly modelSelection: ModelSelection;
@@ -4332,6 +4438,8 @@ function formatClaudeUsageLimitWait(waitMs: number): string {
 
 interface ActiveClaudeTurnContext {
   readonly queryPolicy: ClaudeRuntimeQueryPolicy;
+  // Root tool calls by name; Skill calls are keyed by the skill they load.
+  readonly toolCallCounts: Map<string, number>;
   readonly input: ProviderAdapter.ProviderAdapterV2TurnInput;
   readonly autoCompactWindow: string;
   readonly nativeThreadId: string;
@@ -4890,6 +4998,40 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ),
       }),
     ),
+  );
+  const captureClaudeTurnContext = Effect.fn("ClaudeAdapterV2.captureTurnContext")(
+    function* (live: ClaudeLiveQueryContext, turn: ActiveClaudeTurnContext) {
+      if (Option.isNone(contextStore)) return;
+      const usage =
+        live.query.contextUsage === undefined
+          ? null
+          : yield* live.query.contextUsage.pipe(
+              Effect.timeout("10 seconds"),
+              Effect.orElseSucceed(() => null),
+            );
+      const instructionTexts = new Map<string, string>();
+      for (const file of usage?.memoryFiles ?? []) {
+        const content = yield* fileSystem
+          .readFileString(file.path)
+          .pipe(Effect.orElseSucceed(() => undefined));
+        if (content !== undefined) instructionTexts.set(file.path, content);
+      }
+      yield* contextStore.value.capture({
+        threadId: turn.input.threadId,
+        runId: turn.input.runId,
+        ordinal: turn.input.runOrdinal,
+        capturedAt: DateTime.formatIso(yield* DateTime.now),
+        entries: [
+          ...claudeContextReportEntries({
+            toolCalls: turn.toolCallCounts,
+            usage,
+            instructionTexts,
+          }),
+          ...live.promptContextEntries,
+        ],
+      });
+    },
+    Effect.ignore({ log: true }),
   );
   const loadModelCatalog = (
     adapterOptions.modelCatalog ?? Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG)
@@ -9112,6 +9254,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             !context.reasoning.snapshots.has(message.uuid)
           ) {
             context.reasoning.snapshots.add(message.uuid);
+            for (const block of message.message.content) {
+              if (block.type !== "tool_use") continue;
+              const skill = text(field(block.input, "skill"));
+              const key = block.name === "Skill" && skill ? `Skill: ${skill}` : block.name;
+              context.toolCallCounts.set(key, (context.toolCallCounts.get(key) ?? 0) + 1);
+            }
             // The SDK snapshots each completed block; count thinking blocks separately to preserve streamed ids.
             for (const block of message.message.content) {
               if (block.type !== "thinking") {
@@ -10064,6 +10212,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
             if (!isClaudeProviderContinuationTurn(context.input)) {
               yield* markAbsorbedWake(liveQuery.nativeThreadId);
+              yield* captureClaudeTurnContext(liveQuery, context).pipe(Effect.forkDetach);
             }
             const usageLimited =
               context.authenticationFailureMessage === undefined &&
@@ -11317,6 +11466,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               gatedFramesBeforeEcho: 0,
               heldRootFrames: [],
               executedModel: undefined,
+              toolCallCounts: new Map(),
             };
             const attachTurn = Effect.gen(function* () {
               querySession.lastTurn = context;
