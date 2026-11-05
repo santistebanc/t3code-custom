@@ -114,10 +114,14 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
       {snapshot ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Captured {new Date(snapshot.capturedAt).toLocaleString()} - Sent by T3
+            Captured {new Date(snapshot.capturedAt).toLocaleString()}
           </p>
-          {snapshot.entries.map((entry) => (
-            <details key={entry.source} className="rounded-lg border border-border p-3">
+          {snapshot.entries.map((entry, index) => (
+            <details
+              key={entry.source}
+              open={index === 0}
+              className="rounded-lg border border-border p-3"
+            >
               <summary className="cursor-pointer break-words text-sm font-medium">
                 {entry.source}
               </summary>
@@ -133,18 +137,11 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
           started after this feature was installed.
         </p>
       )}
-      <div className="space-y-2 border-t border-border pt-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Not exposed by the provider</p>
-        <p>
-          Built-in instructions, resolved AGENTS.md files, skill discovery and loaded skills, and
-          tool definitions are assembled inside the provider runtime and are not included in this
-          capture.
-        </p>
-        <p>
-          This is a record of T3's turn request, not the complete model prompt. Other providers do
-          not yet support context capture.
-        </p>
-      </div>
+      <p className="border-t border-border pt-4 text-sm text-muted-foreground">
+        Claude turns list what was used, the instruction files, skills, and MCP tools Claude Code
+        loaded, and what T3 added. Codex turns show only what T3 sent. The provider's own built-in
+        prompt is never shown.
+      </p>
     </div>
   );
 }
