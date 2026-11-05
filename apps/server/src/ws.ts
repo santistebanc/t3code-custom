@@ -3,6 +3,7 @@ import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/con
 import * as NodeCrypto from "node:crypto";
 import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as PromptContext from "./provider/PromptContext.ts";
 import * as Context from "effect/Context";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -1467,6 +1468,7 @@ export const layerWsRpc = (
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
+      const promptContext = yield* PromptContext.make;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
       const intakeContext = yield* Effect.context<
         | ThreadManagementService.ThreadManagementService
@@ -3150,6 +3152,7 @@ export const layerWsRpc = (
                 }),
             ),
           ),
+        [WS_METHODS.promptContextRead]: (input) => promptContext.read(input),
         [WS_METHODS.projectsReadFile]: (input) =>
           workspaceFileSystem.readFile(input).pipe(
             Effect.mapError(

@@ -1,4 +1,9 @@
 import {
+  PromptContextReadInput,
+  PromptContextReadResult,
+  PromptContextError,
+} from "./promptContext.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -488,6 +493,7 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  promptContextRead: "promptContext.read",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -764,6 +770,12 @@ const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
     serverTime: Schema.optionalKey(IsoDateTime),
   }),
   error: EnvironmentAuthorizationError,
+});
+
+const WsPromptContextReadRpc = Rpc.make(WS_METHODS.promptContextRead, {
+  payload: PromptContextReadInput,
+  success: PromptContextReadResult,
+  error: PromptContextError,
 });
 
 const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
@@ -2501,6 +2513,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
+  WsPromptContextReadRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,

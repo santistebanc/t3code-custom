@@ -1,3 +1,4 @@
+import * as PromptContext from "../../provider/PromptContext.ts";
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { brokenRuntimeError } from "../../provider/providerCompatibility.ts";
@@ -909,6 +910,7 @@ function codexCyberAccess(
     ?.capabilities?.optionDescriptors?.find((candidate) => candidate.id === "cyberAccessProgram");
   return descriptor?.type === "select" ? { defaultProgram: descriptor.currentValue } : undefined;
 }
+const encodePromptContextSettings = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTurnStartParams")(
   function* (input: {
@@ -2119,6 +2121,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
     threadId === null ? Effect.undefined : mcpSessions.read(threadId);
   const { clientFactory, digest, fileSystem, idAllocator, serverConfig } = adapterOptions;
   const continuationRequests = adapterOptions.continuationRequests;
+  const contextStore = yield* PromptContext.make.pipe(
+    Effect.provideService(FileSystem.FileSystem, fileSystem),
+    Effect.provideService(ServerConfig, serverConfig),
+  );
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
@@ -8082,13 +8088,41 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               });
             }
             // A turn/started notification may have registered and completed this turn already.
-            if ((yield* Ref.get(pendingRootTurns)).get(threadId) !== turnInput) return;
-            yield* registerRootTurn({
-              turnInput,
-              nativeTurnId: started.turn.id,
-              startedAt: codexTimestamp(started.turn.startedAt),
-              waitForNativeStart: started.turn.startedAt === null,
-            });
+            if ((yield* Ref.get(pendingRootTurns)).get(threadId) === turnInput) {
+              yield* registerRootTurn({
+                turnInput,
+                nativeTurnId: started.turn.id,
+                startedAt: codexTimestamp(started.turn.startedAt),
+                waitForNativeStart: started.turn.startedAt === null,
+              });
+            }
+            yield* contextStore
+              .capture({
+                threadId: turnInput.threadId,
+                runId: turnInput.runId,
+                ordinal: turnInput.runOrdinal,
+                capturedAt: DateTime.formatIso(yield* DateTime.now),
+                entries: [
+                  {
+                    source: "Codex turn settings",
+                    text: yield* encodePromptContextSettings({
+                      cwd: turnStartParams.cwd,
+                      model: turnStartParams.model,
+                      effort: turnStartParams.effort,
+                      approvalPolicy: turnStartParams.approvalPolicy,
+                      sandboxPolicy: turnStartParams.sandboxPolicy,
+                      collaborationMode: turnStartParams.collaborationMode,
+                    }),
+                  },
+                  ...Object.entries(turnStartParams.additionalContext ?? {}).map(
+                    ([source, entry]) => ({
+                      source,
+                      text: entry.value,
+                    }),
+                  ),
+                ],
+              })
+              .pipe(Effect.ignore({ log: true }));
           },
           (effect, turnInput) =>
             effect.pipe(
