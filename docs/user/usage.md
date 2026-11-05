@@ -195,3 +195,13 @@ Use `Ctrl+Shift+1/2/3/4` (`Cmd+Shift+1/2/3/4` on macOS) for the past
 24 hours, 7 days, 30 days, or 90 days. Period shortcuts do nothing on Limits.
 Press `Escape` to return to the previous page. Customize these shortcuts in
 **Settings → Keybindings**.
+
+## Inspect prompt context
+
+Open **Context** beside the composer to inspect the instructions, additional app context, and
+settings T3 supplied for a captured turn. Select a turn to review its saved context; web and
+desktop also let you copy the capture.
+
+Captures are available for new Codex turns. They exclude chat history and do not expose the
+provider's built-in instructions, resolved instruction files, skills, or tool definitions.
+Other providers and turns started before context capture was available have no capture.

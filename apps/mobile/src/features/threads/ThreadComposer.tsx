@@ -1,3 +1,4 @@
+import { PromptContextControl } from "../../components/PromptContextSheet";
 import { useSidebarWorkspaceTabs } from "../layout/workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -1097,6 +1098,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 }
               >
                 {modelControl}
+                <PromptContextControl
+                  key={`${props.environmentId}:${props.selectedThread.id}`}
+                  threadRef={{
+                    environmentId: props.environmentId,
+                    threadId: props.selectedThread.id,
+                  }}
+                />
                 <ComposerDictationStartAction
                   size={usesLargeControls ? "large" : "regular"}
                   state={voiceInput.state}

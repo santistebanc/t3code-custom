@@ -1,3 +1,4 @@
+import * as PromptContext from "../../provider/PromptContext.ts";
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
@@ -759,6 +760,8 @@ function codexRuntimeModeTurnDefaults(runtimeMode: RuntimeMode): {
       };
   }
 }
+
+const encodePromptContextSettings = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTurnStartParams")(
   function* (input: {
@@ -1728,6 +1731,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
     threadId === null ? Effect.undefined : mcpSessions.read(threadId);
   const { clientFactory, digest, fileSystem, idAllocator, serverConfig } = adapterOptions;
   const continuationRequests = adapterOptions.continuationRequests;
+  const contextStore = yield* PromptContext.make.pipe(
+    Effect.provideService(FileSystem.FileSystem, fileSystem),
+    Effect.provideService(ServerConfig, serverConfig),
+  );
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
@@ -6880,6 +6887,34 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(yield* Ref.get(activeTurns)),
             ]);
             const started = yield* client.request("turn/start", turnStartParams);
+            yield* contextStore
+              .capture({
+                threadId: turnInput.threadId,
+                runId: turnInput.runId,
+                ordinal: turnInput.runOrdinal,
+                capturedAt: DateTime.formatIso(yield* DateTime.now),
+                entries: [
+                  {
+                    source: "Codex turn settings",
+                    text: yield* encodePromptContextSettings({
+                      cwd: turnStartParams.cwd,
+                      model: turnStartParams.model,
+                      effort: turnStartParams.effort,
+                      approvalPolicy: turnStartParams.approvalPolicy,
+                      sandboxPolicy: turnStartParams.sandboxPolicy,
+                      collaborationMode: turnStartParams.collaborationMode,
+                    }),
+                  },
+                  ...Object.entries(turnStartParams.additionalContext ?? {}).map(
+                    ([source, entry]) => ({
+                      source,
+                      text: entry.value,
+                    }),
+                  ),
+                ],
+              })
+              .pipe(Effect.ignore({ log: true }));
+
             const previousTurn =
               previousTurns.get(started.turn.id) ??
               (yield* Ref.get(activeTurns)).get(started.turn.id);

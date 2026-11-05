@@ -1,3 +1,4 @@
+import * as PromptContext from "./provider/PromptContext.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -1406,6 +1407,7 @@ export const layerWsRpc = (
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
+      const promptContext = yield* PromptContext.make;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
       const intakeContext = yield* Effect.context<
         | ThreadManagementService.ThreadManagementService
@@ -3007,6 +3009,7 @@ export const layerWsRpc = (
                 }),
             ),
           ),
+        [WS_METHODS.promptContextRead]: (input) => promptContext.read(input),
         [WS_METHODS.projectsReadFile]: (input) =>
           workspaceFileSystem.readFile(input).pipe(
             Effect.mapError(
