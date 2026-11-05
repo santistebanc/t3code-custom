@@ -1,3 +1,4 @@
+import { PromptContextControl } from "../../components/PromptContextSheet";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
@@ -1044,6 +1045,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   {compactControl}
                   {modelControl}
                 </Animated.View>
+                <PromptContextControl
+                  key={`${props.environmentId}:${props.selectedThread.id}`}
+                  threadRef={{
+                    environmentId: props.environmentId,
+                    threadId: props.selectedThread.id,
+                  }}
+                />
                 <ComposerDictationStartAction
                   size={usesLargeControls ? "large" : "regular"}
                   state={voiceInput.state}

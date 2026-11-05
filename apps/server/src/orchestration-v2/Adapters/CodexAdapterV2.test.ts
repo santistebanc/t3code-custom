@@ -1,3 +1,5 @@
+import * as PromptContext from "../../provider/PromptContext.ts";
+import { ServerConfig } from "../../config.ts";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import {
@@ -4779,6 +4781,18 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         ["item/completed", "turn/completed", "thread/inject_items"],
         "restored T3 context while the compacting native turn was still running",
       );
+      const contextStore = yield* PromptContext.make.pipe(
+        Effect.provideService(ServerConfig, harness.serverConfig),
+      );
+      const { snapshot } = yield* contextStore.read({ threadId: harness.threadId });
+      assert.deepEqual(
+        snapshot?.entries.slice(1),
+        Object.entries(params.additionalContext ?? {}).map(([source, entry]) => ({
+          source,
+          text: entry.value,
+        })),
+      );
+      assert.equal(snapshot?.entries[0]?.source, "Codex turn settings");
     }).pipe(
       Effect.provide(
         Layer.mergeAll(

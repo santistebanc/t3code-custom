@@ -72,3 +72,13 @@ Open **Settings → Providers → Usage providers → Add HTTP source** with a G
 ```
 
 `kind` is `session`, `weekly`, `monthly`, or `other`. Setting `providerInstanceId` binds the quota windows to that instance's thread details card.
+
+## Inspect prompt context
+
+Open **Context** beside the composer to inspect the instructions, additional app context, and
+settings T3 supplied for a captured turn. Select a turn to review its saved context; web and
+desktop also let you copy the capture.
+
+Captures are available for new Codex turns. They exclude chat history and do not expose the
+provider's built-in instructions, resolved instruction files, skills, or tool definitions.
+Other providers and turns started before context capture was available have no capture.
