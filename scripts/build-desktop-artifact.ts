@@ -3660,7 +3660,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     // Windows antivirus keeps the just-built exe locked for a while; a leftover temp dir must not fail the build.
     yield* Effect.addFinalizer(() =>
       Effect.tryPromise(() =>
-        NodeFSP.rm(stageRoot, { recursive: true, force: true, maxRetries: 12, retryDelay: 500 }),
+        NodeFSP.rm(stageRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 }),
       ).pipe(
         Effect.catch((error) =>
           Effect.logWarning(`[desktop-artifact] Could not remove ${stageRoot}: ${error}`),
