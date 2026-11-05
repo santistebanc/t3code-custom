@@ -1,5 +1,6 @@
 import type {
   ProviderInstanceId,
+  ScopedThreadRef,
   ServerProvider,
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
@@ -15,7 +16,7 @@ import {
 import { formatDuration, limitsNotice } from "@t3tools/shared/usageLimitsCopy";
 import { Link } from "@tanstack/react-router";
 import { msg, useGT, useLocale, useMessages } from "gt-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -25,6 +26,7 @@ import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./compaction.logic";
+import { PromptContextDialog } from "./PromptContextDialog";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import {
   nextPoolReset,
@@ -117,7 +119,15 @@ function InstanceRows({
 }
 
 /** The thread's context window. The bar fills as context is used; the tick marks auto-compaction. */
-export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowSnapshot }) {
+export function ThreadDetailsContext({
+  usage,
+  threadRef,
+}: {
+  readonly usage: ContextWindowSnapshot;
+  /** Null for drafts, which have no captured prompt context. */
+  readonly threadRef: ScopedThreadRef | null;
+}) {
+  const [open, setOpen] = useState(false);
   const maxTokens = usage.maxTokens != null && usage.maxTokens > 0 ? usage.maxTokens : null;
   const used =
     maxTokens !== null && usage.usedPercentage !== null
@@ -145,6 +155,7 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
           tone={used === null ? null : used >= 90 ? "error" : used >= 80 ? "warning" : null}
           tick={tick}
           muted
+          {...(threadRef ? { onClick: () => setOpen(true) } : {})}
           value={
             maxTokens !== null
               ? `${usedTokens} / ${formatContextWindowTokens(maxTokens)}`
@@ -175,10 +186,21 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
                   {formatContextWindowCompactionMessage(threshold, m)}
                 </span>
               ) : null}
+              {threadRef ? (
+                <span className="text-muted-foreground">Click to inspect prompt context</span>
+              ) : null}
             </>
           }
         />
       </div>
+      {threadRef ? (
+        <PromptContextDialog
+          key={`${threadRef.environmentId}:${threadRef.threadId}`}
+          threadRef={threadRef}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      ) : null}
     </ThreadDetailsSection>
   );
 }
@@ -304,6 +326,7 @@ function UsageRow({
   tooltip,
   muted = false,
   opensUsage = false,
+  onClick,
 }: {
   readonly label: string;
   /** Bar fill from 0 to 100. Null hides the bar. */
@@ -316,13 +339,14 @@ function UsageRow({
   readonly tooltip: ReactNode;
   readonly muted?: boolean;
   readonly opensUsage?: boolean;
+  readonly onClick?: () => void;
 }) {
   const gt = useGT();
   const rowProps = {
     "aria-label": gt("{label}: {value}", { label, value: ariaValue }),
     className: cn(
-      "col-span-3 grid h-6 grid-cols-subgrid items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
-      opensUsage
+      "col-span-3 grid h-6 grid-cols-subgrid items-center rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+      (opensUsage || onClick)
         ? "group cursor-pointer active:bg-black/[0.06] dark:active:bg-white/[0.12]"
         : "cursor-default",
     ),
@@ -331,7 +355,13 @@ function UsageRow({
     <Tooltip>
       <TooltipTrigger
         render={
-          opensUsage ? <Link to="/usage" {...rowProps} /> : <div tabIndex={0} {...rowProps} />
+          opensUsage ? (
+            <Link to="/usage" {...rowProps} />
+          ) : onClick ? (
+            <button type="button" onClick={onClick} {...rowProps} />
+          ) : (
+            <div tabIndex={0} {...rowProps} />
+          )
         }
       >
         <span className="max-w-28 truncate text-muted-foreground group-hover:text-foreground">

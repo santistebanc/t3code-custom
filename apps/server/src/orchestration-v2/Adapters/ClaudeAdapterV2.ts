@@ -1,4 +1,5 @@
 import * as DocumentText from "../../provider/DocumentText.ts";
+import * as PromptContext from "../../provider/PromptContext.ts";
 import {
   compactDynamicToolOutput,
   mcpToolResultOutput,
@@ -2519,6 +2520,8 @@ const subagentDeviceInstructions: HookCallback = () =>
       additionalContext: T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
     },
   });
+
+const encodePromptContextSettings = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export function makeClaudeQueryOptions(input: {
   readonly modelSelection: ModelSelection;
@@ -5574,6 +5577,8 @@ interface ClaudeLiveQueryContext {
   // Root messages this process streamed; what it holds beyond the history it resumed.
   readonly emittedMessageUuids: Set<string>;
   transcriptPath: string | undefined;
+  // What T3 opened this process with, recorded for each turn it runs.
+  readonly promptContextEntries: ReadonlyArray<{ readonly source: string; readonly text: string }>;
 }
 
 interface ActiveClaudeToolCall {
@@ -6007,6 +6012,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
   const { attachmentsDir, fileSystem, path, random, idAllocator, queryRunner } = adapterOptions;
+  const contextStore = yield* Effect.serviceOption(ServerConfig.ServerConfig).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(Option.none<PromptContext.PromptContext["Service"]>()),
+        onSome: (config) =>
+          PromptContext.make.pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+            Effect.provideService(ServerConfig.ServerConfig, config),
+            Effect.asSome,
+          ),
+      }),
+    ),
+  );
   const loadModelCatalog = (
     adapterOptions.modelCatalog ?? Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG)
   ).pipe(
@@ -13839,6 +13858,29 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ),
             emittedMessageUuids: new Set(),
             transcriptPath: undefined,
+            promptContextEntries: [
+              {
+                source: "Claude query settings",
+                text: yield* encodePromptContextSettings({
+                  cwd: queryOptions.cwd,
+                  model: queryOptions.model,
+                  effort: queryOptions.effort,
+                  permissionMode: queryOptions.permissionMode,
+                  additionalDirectories: queryOptions.additionalDirectories,
+                  mcpServers: Object.keys(queryOptions.mcpServers ?? {}),
+                  settings: queryOptions.settings,
+                }),
+              },
+              {
+                source: "Appended to Claude Code's system prompt",
+                text:
+                  typeof queryOptions.systemPrompt === "object" &&
+                  !Array.isArray(queryOptions.systemPrompt) &&
+                  "append" in queryOptions.systemPrompt
+                    ? (queryOptions.systemPrompt.append ?? "")
+                    : "",
+              },
+            ],
           };
           // One step, so the replaced process cannot exit between the install and the handoff.
           yield* Ref.update(queryContext, (replaced) => {
@@ -14197,6 +14239,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     ? {}
                     : { cause: querySession.exitCause }),
                 });
+              }
+              if (Option.isSome(contextStore) && !isClaudeProviderContinuationTurn(turnInput)) {
+                yield* contextStore.value
+                  .capture({
+                    threadId: turnInput.threadId,
+                    runId: turnInput.runId,
+                    ordinal: turnInput.runOrdinal,
+                    capturedAt: DateTime.formatIso(yield* DateTime.now),
+                    entries: querySession.promptContextEntries,
+                  })
+                  .pipe(Effect.ignore({ log: true }));
               }
               if (
                 !isClaudeProviderContinuationTurn(turnInput) &&
