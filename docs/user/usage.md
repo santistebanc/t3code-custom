@@ -198,10 +198,10 @@ Press `Escape` to return to the previous page. Customize these shortcuts in
 
 ## Inspect prompt context
 
-Open **Context** beside the composer to inspect the instructions, additional app context, and
-settings T3 supplied for a captured turn. Select a turn to review its saved context; web and
-desktop also let you copy the capture.
+Click the **Context** row in the thread details panel to inspect the instructions, additional app
+context, and settings T3 supplied for a captured turn. Select a turn to review its saved context;
+web and desktop also let you copy the capture.
 
-Captures are available for new Codex turns. They exclude chat history and do not expose the
-provider's built-in instructions, resolved instruction files, skills, or tool definitions.
+Captures are available for new Codex and Claude turns. They exclude chat history and do not expose
+the provider's built-in instructions, resolved instruction files, skills, or tool definitions.
 Other providers and turns started before context capture was available have no capture.

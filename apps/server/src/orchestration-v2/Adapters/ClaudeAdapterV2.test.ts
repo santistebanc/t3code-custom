@@ -82,6 +82,7 @@ import * as PortScanner from "../../preview/PortScanner.ts";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { WorkflowAgentTranscriptReadObserver } from "../workflowAgentTranscript.ts";
 import * as ServerConfig from "../../config.ts";
+import * as PromptContext from "../../provider/PromptContext.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import { T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH } from "@t3tools/provider-core/server/orchestrationInstructions";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -1345,77 +1346,110 @@ describe("ClaudeAdapterV2 MCP elicitation acceptance", () => {
   });
 });
 
-const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(function* (
-  binaryPath: string,
-  environment: ResolvedProviderInstanceEnvironment = [],
-) {
-  const executablePaths: Array<string | undefined> = [];
-  const taskToolEnvironment: Array<string | undefined> = [];
-  const adapter = yield* ClaudeAdapterV2.createClaudeAdapterV2(
-    {
-      instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-      displayName: undefined,
-      environment,
-      enabled: true,
-      config: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath },
-    },
-    {},
-  ).pipe(
-    Effect.provide(
-      ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-claude-binary-path-",
+const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(
+  function* (binaryPath: string, environment: ResolvedProviderInstanceEnvironment = []) {
+    const executablePaths: Array<string | undefined> = [];
+    const taskToolEnvironment: Array<string | undefined> = [];
+    const systemPromptAppends: Array<string | undefined> = [];
+    const adapter = yield* ClaudeAdapterV2.createClaudeAdapterV2(
+      {
+        instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+        displayName: undefined,
+        environment,
+        enabled: true,
+        config: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath },
+      },
+      {},
+    ).pipe(
+      Effect.provideService(ClaudeAdapterV2.ClaudeAgentSdkQueryRunner, {
+        allocateSessionId: Effect.succeed("native-thread-claude-binary-path"),
+        open: (input) =>
+          Effect.sync(() => {
+            executablePaths.push(input.options.pathToClaudeCodeExecutable);
+            taskToolEnvironment.push(input.options.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS);
+            systemPromptAppends.push(
+              (input.options.systemPrompt as { readonly append?: string } | undefined)?.append,
+            );
+            return {
+              messages: Stream.never,
+              offer: () => Effect.void,
+              setModel: () => Effect.void,
+              applyFlagSettings: () => Effect.void,
+              setPermissionMode: () => Effect.void,
+              backgroundTasks: () => Effect.succeed(false),
+              mcpServerStatus: Effect.succeed([]),
+              readMcpResource: () => Effect.die("unexpected MCP resource read"),
+              callMcpTool: () => Effect.die("unexpected MCP tool call"),
+              listPermissionRules: Effect.die("unexpected permission rules read"),
+              stopTask: () => Effect.void,
+              interrupt: Effect.void,
+              close: Effect.void,
+            };
+          }),
+        forkSession: () => Effect.die("unused"),
+        subagentLaunchToolUseId: () => Effect.succeed(null),
+        assertComplete: Effect.void,
       }),
-    ),
-    Effect.provideService(ClaudeAdapterV2.ClaudeAgentSdkQueryRunner, {
-      allocateSessionId: Effect.succeed("native-thread-claude-binary-path"),
-      open: (input) =>
-        Effect.sync(() => {
-          executablePaths.push(input.options.pathToClaudeCodeExecutable);
-          taskToolEnvironment.push(input.options.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS);
-          return {
-            messages: Stream.never,
-            offer: () => Effect.void,
-            setModel: () => Effect.void,
-            applyFlagSettings: () => Effect.void,
-            setPermissionMode: () => Effect.void,
-            backgroundTasks: () => Effect.succeed(false),
-            mcpServerStatus: Effect.succeed([]),
-            readMcpResource: () => Effect.die("unexpected MCP resource read"),
-            callMcpTool: () => Effect.die("unexpected MCP tool call"),
-            listPermissionRules: Effect.die("unexpected permission rules read"),
-            stopTask: () => Effect.void,
-            interrupt: Effect.void,
-            close: Effect.void,
-          };
-        }),
-      forkSession: () => Effect.die("unused"),
-      subagentLaunchToolUseId: () => Effect.succeed(null),
-      assertComplete: Effect.void,
-    }),
-  );
-  const threadId = ThreadId.make("thread-claude-binary-path");
-  const runtime = yield* adapter.openSession({
-    threadId,
-    providerSessionId: ProviderSessionId.make("provider-session-claude-binary-path"),
-    modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-    runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-  });
-  const providerThread = yield* runtime.ensureThread({
-    threadId,
-    modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-    runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
-  });
-  yield* runtime.startTurn(
-    makeClaudeTestTurnInput({
+    );
+    const threadId = ThreadId.make("thread-claude-binary-path");
+    const runtime = yield* adapter.openSession({
       threadId,
-      providerThread,
-      now: yield* DateTime.now,
-      attemptId: RunAttemptId.make("attempt-claude-binary-path"),
-      text: "hello",
-      attachments: [],
-    }),
+      providerSessionId: ProviderSessionId.make("provider-session-claude-binary-path"),
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+    });
+    const providerThread = yield* runtime.ensureThread({
+      threadId,
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+    });
+    yield* runtime.startTurn(
+      makeClaudeTestTurnInput({
+        threadId,
+        providerThread,
+        now: yield* DateTime.now,
+        attemptId: RunAttemptId.make("attempt-claude-binary-path"),
+        text: "hello",
+        attachments: [],
+      }),
+    );
+    const contextStore = yield* PromptContext.make;
+    const { snapshot } = yield* contextStore.read({ threadId });
+    return { executablePaths, taskToolEnvironment, systemPromptAppends, snapshot };
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), {
+          prefix: "t3-claude-binary-path-",
+        }),
+      ),
+    ),
+);
+
+describe("ClaudeAdapterV2 prompt context", () => {
+  it.effect("records the system prompt T3 appended for each turn", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { systemPromptAppends, snapshot } = yield* captureSdkExecutablePaths("claude");
+        assert.deepEqual(
+          snapshot?.entries.map((entry) => entry.source),
+          ["Claude query settings", "Appended to Claude Code's system prompt"],
+        );
+        assert.equal(snapshot?.entries[1]?.text, systemPromptAppends[0]);
+        assert.include(snapshot?.entries[1]?.text ?? "", "Claude Code");
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
   );
-  return { executablePaths, taskToolEnvironment };
 });
 
 describe("ClaudeAdapterV2 executable path", () => {

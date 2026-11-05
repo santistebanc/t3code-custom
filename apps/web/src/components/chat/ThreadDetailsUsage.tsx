@@ -1,5 +1,6 @@
 import type {
   ProviderInstanceId,
+  ScopedThreadRef,
   ServerProvider,
   ServerProviderUsageWindow,
   UsageLimitSourceSnapshots,
@@ -12,7 +13,7 @@ import {
   paceOf,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -22,6 +23,7 @@ import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./compaction.logic";
+import { PromptContextDialog } from "./PromptContextDialog";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 
 const PACE_LABEL: Record<LimitPace, string> = {
@@ -84,7 +86,15 @@ export function ThreadDetailsUsage({
 }
 
 /** The thread's context window. The bar fills as context is used; the tick marks auto-compaction. */
-export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowSnapshot }) {
+export function ThreadDetailsContext({
+  usage,
+  threadRef,
+}: {
+  readonly usage: ContextWindowSnapshot;
+  /** Null for drafts, which have no captured prompt context. */
+  readonly threadRef: ScopedThreadRef | null;
+}) {
+  const [open, setOpen] = useState(false);
   const maxTokens = usage.maxTokens != null && usage.maxTokens > 0 ? usage.maxTokens : null;
   const used =
     maxTokens !== null && usage.usedPercentage !== null
@@ -109,6 +119,7 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
           tone={used === null ? null : used >= 90 ? "error" : used >= 80 ? "warning" : null}
           tick={tick}
           muted
+          {...(threadRef ? { onClick: () => setOpen(true) } : {})}
           value={
             maxTokens !== null
               ? `${usedTokens} / ${formatContextWindowTokens(maxTokens)}`
@@ -131,10 +142,21 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
                   {formatContextWindowCompactionMessage(threshold)}
                 </span>
               ) : null}
+              {threadRef ? (
+                <span className="text-muted-foreground">Click to inspect prompt context</span>
+              ) : null}
             </>
           }
         />
       </div>
+      {threadRef ? (
+        <PromptContextDialog
+          key={`${threadRef.environmentId}:${threadRef.threadId}`}
+          threadRef={threadRef}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      ) : null}
     </ThreadDetailsSection>
   );
 }
@@ -185,6 +207,7 @@ function UsageRow({
   ariaValue = value,
   tooltip,
   muted = false,
+  onClick,
 }: {
   readonly label: string;
   /** Bar fill from 0 to 100. Null hides the bar. */
@@ -196,15 +219,20 @@ function UsageRow({
   readonly ariaValue?: string;
   readonly tooltip: ReactNode;
   readonly muted?: boolean;
+  readonly onClick?: () => void;
 }) {
+  const Row = onClick ? "button" : "div";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <div
-            tabIndex={0}
+          <Row
+            {...(onClick ? { type: "button" as const, onClick } : { tabIndex: 0 })}
             aria-label={`${label}: ${ariaValue}`}
-            className="col-span-3 grid h-6 cursor-default grid-cols-subgrid items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]"
+            className={cn(
+              "col-span-3 grid h-6 grid-cols-subgrid items-center rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+              onClick ? "cursor-pointer" : "cursor-default",
+            )}
           />
         }
       >

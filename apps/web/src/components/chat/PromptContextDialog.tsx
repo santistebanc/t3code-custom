@@ -1,6 +1,5 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { LayersIcon } from "lucide-react";
 import { useContext, useState } from "react";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { promptContext } from "../../state/promptContext";
@@ -8,7 +7,6 @@ import { formatEnvironmentQueryError } from "../../state/query";
 import { Button } from "../ui/button";
 import {
   Dialog,
-  DialogTrigger,
   DialogPopup,
   DialogHeader,
   DialogTitle,
@@ -16,16 +14,18 @@ import {
   DialogPanel,
 } from "../ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from "../ui/select";
-import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 
-export function PromptContextDialog({ threadRef }: { threadRef: ScopedThreadRef }) {
-  const [open, setOpen] = useState(false);
+export function PromptContextDialog({
+  threadRef,
+  open,
+  onOpenChange,
+}: {
+  threadRef: ScopedThreadRef;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<ComposerControl aria-label="Inspect prompt context" />}>
-        <ComposerControlIcon icon={LayersIcon} />
-        <span className="sr-only sm:not-sr-only">Context</span>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup>
         <DialogHeader>
           <DialogTitle>Prompt context</DialogTitle>
@@ -129,8 +129,8 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No captured context for this turn. Captures are available for new Codex turns started
-          after this feature was installed.
+          No captured context for this turn. Captures are available for new Codex and Claude turns
+          started after this feature was installed.
         </p>
       )}
       <div className="space-y-2 border-t border-border pt-4 text-sm text-muted-foreground">
