@@ -4,22 +4,16 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 
-async function waitUntilWritable(file) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      fs.closeSync(fs.openSync(file, "r+"));
-      return;
-    } catch (error) {
-      if (attempt >= 600 || (error.code !== "EBUSY" && error.code !== "EPERM")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-}
-
 // afterPack runs before signing and installer creation, against the final ASAR layout.
 module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => {
   if (!["darwin", "win32", "linux"].includes(electronPlatformName)) {
     console.log(`[server-compile-cache] Skipping unsupported target ${electronPlatformName}`);
+    return;
+  }
+  // Official Windows installers are cross-built and ship without this cache; its loose files
+  // push a native Windows build past WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT.
+  if (electronPlatformName === "win32") {
+    console.log("[server-compile-cache] Skipping Windows to match official installers");
     return;
   }
   const targetArch = ["ia32", "x64", "armv7l", "arm64", "universal"][arch];
@@ -75,7 +69,5 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => 
   }
   if (result.status !== 0)
     throw new Error(`Server compile cache generation failed: ${result.error || result.stderr}`);
-  // Windows keeps a just-run exe locked (antivirus scan), and electron-builder edits it next.
-  if (electronPlatformName === "win32") await waitUntilWritable(executable);
   console.log("[server-compile-cache] Prepared server bytecode with packaged Electron");
 };
