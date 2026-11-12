@@ -1,0 +1,16 @@
+{
+  "parts": [
+    {"id": "web", "name": "Web app", "about": "The chat and thread screens in the browser", "paths": ["apps/web"], "links": ["runtime"]},
+    {"id": "desktop", "name": "Desktop app", "about": "The desktop window around the web app", "paths": ["apps/desktop"], "links": ["web", "server", "native"]},
+    {"id": "mobile", "name": "Mobile app", "about": "The phone app", "paths": ["apps/mobile"], "links": ["runtime"]},
+    {"id": "server", "name": "Server", "about": "Runs agents, threads and tools", "paths": ["apps/server"], "links": ["providers", "source-control", "runtime"]},
+    {"id": "runtime", "name": "Shared client code", "about": "Contracts and code shared by all apps", "paths": ["packages/client-runtime", "packages/contracts", "packages/shared", "packages/ssh", "packages/tailscale"], "links": []},
+    {"id": "providers", "name": "Agent providers", "about": "Claude, Codex, Cursor and other agents", "paths": ["packages/provider-acp-registry", "packages/provider-acp", "packages/provider-core", "packages/provider-cursor", "packages/provider-fx", "packages/provider-grok", "packages/provider-kiro", "packages/provider-muse", "packages/provider-opencode", "packages/provider-pi", "packages/provider-testing", "packages/effect-acp", "packages/effect-codex-app-server"], "links": []},
+    {"id": "source-control", "name": "Source control and secrets", "about": "GitHub, GitLab and other hosts; password stores", "paths": ["packages/source-control-azure-devops", "packages/source-control-bitbucket", "packages/source-control-core", "packages/source-control-cursor-origin", "packages/source-control-definitions", "packages/source-control-forgejo", "packages/source-control-gitcafe", "packages/source-control-github", "packages/source-control-gitlab", "packages/source-control-testing", "packages/secret-provider-core", "packages/secret-provider-definitions", "packages/secret-provider-onepassword"], "links": []},
+    {"id": "native", "name": "Native helpers", "about": "Terminal, screenshots and system monitors", "paths": ["native"], "links": []},
+    {"id": "infra", "name": "Cloud services", "about": "Relay and task cache", "paths": ["infra"], "links": []},
+    {"id": "custom", "name": "Custom changes", "about": "Changes in this fork only", "paths": ["custom"], "links": []},
+    {"id": "tooling", "name": "Tooling", "about": "Lint rules, evals, scripts and packaging", "paths": ["oxlint-plugin-t3code", "evals", "scripts", "packaging", "patches", "package.json", "knip.jsonc", "pnpm-lock.yaml", "pnpm-workspace.yaml", "t3.json", "tsconfig.base.json", "tsconfig.effect.json", "vite.config.ts"], "links": []},
+    {"id": "docs", "name": "Docs and marketing", "about": "Docs and the marketing site", "paths": ["docs", "apps/marketing", "assets", "third-party-licenses", "third-party-licenses.config.json", "README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "LICENSE"], "links": []}
+  ]
+}
