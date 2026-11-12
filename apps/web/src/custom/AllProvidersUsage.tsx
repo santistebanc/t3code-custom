@@ -11,6 +11,7 @@ import {
   collectProviderUsageLimits,
   formatDuration,
   remainingPercent,
+  resetCreditChoices,
 } from "@t3tools/shared/usageLimits";
 import { ChevronDownIcon, RotateCwIcon, TicketIcon } from "lucide-react";
 import { useState } from "react";
@@ -255,6 +256,7 @@ function AccountUsageRow({
             environmentId={environmentId}
             input={{ instanceId: entry.instanceId }}
             credits={resetCredits}
+            now={now}
           />
         ) : null}
       </div>
@@ -391,15 +393,16 @@ function ResetTicketButton({
   environmentId,
   input,
   credits,
+  now,
 }: {
   readonly environmentId: EnvironmentId;
   readonly input: ProviderConsumeResetCreditInput;
   readonly credits: ServerProviderResetCredits;
+  readonly now: number;
 }) {
-  const { canManageProviders, confirming, setConfirming, busy, status, redeem } = useResetCredit(
-    environmentId,
-    input,
-  );
+  const { canManageProviders, choice, confirming, setConfirming, confirm, busy, status, redeem } =
+    useResetCredit(environmentId);
+  const next = resetCreditChoices(credits, input, now).find((option) => option.availableCount > 0);
   return (
     <span className="ms-auto flex shrink-0 items-center">
       <Tooltip>
@@ -408,8 +411,8 @@ function ResetTicketButton({
             <Button
               size="xs"
               variant="ghost"
-              disabled={busy || !canManageProviders}
-              onClick={() => setConfirming(true)}
+              disabled={busy || !canManageProviders || next === undefined}
+              onClick={() => next && confirm(next)}
             />
           }
         >
@@ -429,6 +432,7 @@ function ResetTicketButton({
       <ResetCreditDialog
         open={confirming}
         onOpenChange={setConfirming}
+        choice={choice}
         onConfirm={() => void redeem()}
         disabled={!canManageProviders}
       />
