@@ -44,7 +44,8 @@ function CustomReleaseExists([string]$name) {
 if ((git branch --show-current) -ne "custom") { throw "Check out the 'custom' branch first." }
 if (git status --porcelain --untracked-files=no) { throw "Commit or stash your changes first." }
 
-Run "Fetching upstream" { git fetch upstream --tags --quiet }
+# --force: upstream owns release tags; a fetch from origin can leave our same-named release tags here.
+Run "Fetching upstream" { git fetch upstream --tags --force --quiet }
 
 if (-not $Tag) {
   $Tag = gh release view -R $UpstreamRepo --json tagName -q .tagName
