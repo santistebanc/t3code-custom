@@ -48,6 +48,17 @@ import {
   resetCreditChoices,
 } from "@t3tools/shared/usageLimitsCopy";
 
+const creditExpiryFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+function creditExpiryDate(account: LimitAccount): string | null {
+  const expiresAt = account.limits.resetCredits?.nextExpiresAt;
+  const date = expiresAt ? Date.parse(expiresAt) : NaN;
+  return Number.isFinite(date) ? creditExpiryFormatter.format(date) : null;
+}
+
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   return `${local[0] ?? ""}${domain[0] ?? ""}`.toUpperCase() || "?";
@@ -376,6 +387,7 @@ function SegmentTriggers({
   const refillIn = formatResetsIn(window, now, m, "refill");
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   const gt = useGT();
+  const creditExpiry = creditExpiryDate(account);
   const segmentLabel = [
     gt("{name}: {remaining}% left", {
       name:
@@ -390,6 +402,7 @@ function SegmentTriggers({
           { count: credits },
         )
       : null,
+    credits && creditExpiry ? gt("next expires {date}", { date: creditExpiry }) : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -470,6 +483,7 @@ function SegmentTriggers({
                   <span aria-hidden className="inline-flex items-center gap-0.5 font-semibold">
                     <TicketIcon className="size-3" aria-hidden />
                     {credits}
+                    {creditExpiry ? ` · ${creditExpiry}` : ""}
                   </span>
                 </>
               ) : null}
@@ -500,6 +514,7 @@ function LegendRow({
   const resetsIn = formatResetsIn(window, now, m, "refill");
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   const gt = useGT();
+  const creditExpiry = creditExpiryDate(account);
   return (
     <PopoverTrigger
       handle={popover}
@@ -530,12 +545,14 @@ function LegendRow({
             >
               <TicketIcon className="size-3" aria-hidden />
               {credits}
+              {creditExpiry ? ` · ${creditExpiry}` : ""}
             </span>
             <span className="sr-only">
               {gt(
                 "{count, plural, one {{count} reset credit banked} other {{count} reset credits banked}}",
                 { count: credits },
               )}
+              {creditExpiry ? gt(", next expires {date}", { date: creditExpiry }) : ""}
             </span>
           </>
         ) : null}
