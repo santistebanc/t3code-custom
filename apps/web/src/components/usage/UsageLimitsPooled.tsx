@@ -43,6 +43,17 @@ import { Alert, AlertTitle } from "../ui/alert";
 import { Popover, PopoverCreateHandle, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { PaceIcon, ResetCreditDialog, barColor, usePaceMark, useResetCredit } from "./UsageLimits";
 
+const creditExpiryFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+function creditExpiryDate(account: LimitAccount): string | null {
+  const expiresAt = account.limits.resetCredits?.nextExpiresAt;
+  const date = expiresAt ? Date.parse(expiresAt) : NaN;
+  return Number.isFinite(date) ? creditExpiryFormatter.format(date) : null;
+}
+
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   return `${local[0] ?? ""}${domain[0] ?? ""}`.toUpperCase() || "?";
@@ -350,6 +361,7 @@ function SegmentTriggers({
   const [segmentRef, paceMark] = usePaceMark(timeLeft);
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+  const creditExpiry = creditExpiryDate(account);
   return (
     <>
       <PopoverTrigger
@@ -361,7 +373,7 @@ function SegmentTriggers({
             ref={segmentRef}
             type="button"
             style={{ gridColumn: index, gridRow: 1, ...paceMark?.gappedTrack }}
-            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${timeLeft === null ? "" : `, ${timeLeft}% of the window left`}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
+            aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${timeLeft === null ? "" : `, ${timeLeft}% of the window left`}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked${creditExpiry ? `, next expires ${creditExpiry}` : ""}` : ""}`}
             className="relative h-5 min-w-0 cursor-pointer rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
           />
         }
@@ -425,6 +437,7 @@ function SegmentTriggers({
                   <span aria-hidden className="inline-flex items-center gap-0.5 font-semibold">
                     <TicketIcon className="size-3" aria-hidden />
                     {credits}
+                    {creditExpiry ? ` · ${creditExpiry}` : ""}
                   </span>
                 </>
               ) : null}
@@ -453,6 +466,7 @@ function LegendRow({
   const remaining = remainingPercent(window);
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
+  const creditExpiry = creditExpiryDate(account);
   return (
     <PopoverTrigger
       handle={popover}
@@ -483,9 +497,11 @@ function LegendRow({
             >
               <TicketIcon className="size-3" aria-hidden />
               {credits}
+              {creditExpiry ? ` · ${creditExpiry}` : ""}
             </span>
             <span className="sr-only">
               {credits} reset {credits === 1 ? "credit" : "credits"} banked
+              {creditExpiry ? `, next expires ${creditExpiry}` : ""}
             </span>
           </>
         ) : null}
