@@ -96,11 +96,12 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           & ./custom/update.ps1 -Tag $env:RELEASE_TAG -CheckAdapters
-          if ($LASTEXITCODE -eq 2) {
+          $updateExitCode = $LASTEXITCODE
+          if ($updateExitCode -eq 2) {
             git diff --name-only --diff-filter=U
             Write-Output '::error::The custom changes conflict with the official release. Resolve the rebase on the custom branch and run the update again.'
           }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($updateExitCode -ne 0) { exit $updateExitCode }
 
       - name: Publish the checked update
         if: steps.release.outputs.tag != '' && (github.event_name == 'schedule' || inputs.publish)
