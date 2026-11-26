@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import type { CSSProperties } from "react";
 
 import { Badge } from "../components/ui/badge";
@@ -11,7 +12,7 @@ export function CustomBuildBadge() {
       className="self-center"
       style={{ "--label": "#a855f7" } as CSSProperties}
     >
-      Custom
+      <T>Custom</T>
     </Badge>
   );
 }

@@ -1,7 +1,8 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { useContext, useState } from "react";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { promptContext } from "../../state/promptContext";
 import { formatEnvironmentQueryError } from "../../state/query";
 import { Button } from "../ui/button";
@@ -28,10 +29,14 @@ export function PromptContextDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Prompt context</DialogTitle>
+          <DialogTitle>
+            <T>Prompt context</T>
+          </DialogTitle>
           <DialogDescription>
-            Inspect what T3 supplied to the provider for a turn. Messages and conversation history
-            are omitted.
+            <T>
+              Inspect what T3 supplied to the provider for a turn. Messages and conversation history
+              are omitted.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>{open && <PromptContextContents threadRef={threadRef} />}</DialogPanel>
@@ -41,6 +46,7 @@ export function PromptContextDialog({
 }
 
 function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const gt = useGT();
   const [snapshotId, setSnapshotId] = useState<string>();
   const registry = useContext(RegistryContext);
   const atom = promptContext({
@@ -51,14 +57,21 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
     },
   });
   const result = useAtomValue(atom);
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "prompt context" });
-  if (result._tag === "Initial") return <p role="status">Loading context...</p>;
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: namedClipboardTarget("prompt context"),
+  });
+  if (result._tag === "Initial")
+    return (
+      <p role="status">
+        <T>Loading context...</T>
+      </p>
+    );
   if (result._tag === "Failure")
     return (
       <div className="space-y-3">
         <p role="alert">{formatEnvironmentQueryError(result.cause)}</p>
         <Button variant="outline" size="sm" onClick={() => registry.refresh(atom)}>
-          Retry
+          <T>Retry</T>
         </Button>
       </div>
     );
@@ -72,7 +85,7 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
           onClick={() => registry.refresh(atom)}
           disabled={result.waiting}
         >
-          Refresh
+          <T>Refresh</T>
         </Button>
         {snapshot && (
           <Button
@@ -84,17 +97,20 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
               )
             }
           >
-            {isCopied ? "Copied" : "Copy context"}
+            {isCopied ? gt("Copied") : gt("Copy context")}
           </Button>
         )}
       </div>
       {snapshots.length > 0 && (
         <div className="space-y-1">
           <label htmlFor="prompt-context-turn" className="text-sm font-medium">
-            Captured turn
+            <T>Captured turn</T>
           </label>
           <Select
-            items={snapshots.map((item) => ({ value: item.id, label: `Turn ${item.ordinal}` }))}
+            items={snapshots.map((item) => ({
+              value: item.id,
+              label: gt("Turn {ordinal}", { ordinal: item.ordinal }),
+            }))}
             value={snapshotId ?? snapshots[0]?.id}
             onValueChange={(value) => setSnapshotId(value ?? undefined)}
           >
@@ -104,7 +120,7 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
             <SelectPopup>
               {snapshots.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
-                  Turn {item.ordinal}
+                  {gt("Turn {ordinal}", { ordinal: item.ordinal })}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -114,7 +130,7 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
       {snapshot ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Captured {new Date(snapshot.capturedAt).toLocaleString()}
+            {gt("Captured {date}", { date: new Date(snapshot.capturedAt).toLocaleString() })}
           </p>
           {snapshot.entries.map((entry, index) => (
             <details
@@ -133,14 +149,18 @@ function PromptContextContents({ threadRef }: { threadRef: ScopedThreadRef }) {
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No captured context for this turn. Captures are available for new Codex and Claude turns
-          started after this feature was installed.
+          <T>
+            No captured context for this turn. Captures are available for new Codex and Claude turns
+            started after this feature was installed.
+          </T>
         </p>
       )}
       <p className="border-t border-border pt-4 text-sm text-muted-foreground">
-        Claude turns list what was used, the instruction files, skills, and MCP tools Claude Code
-        loaded, and what T3 added. Codex turns show only what T3 sent. The provider's own built-in
-        prompt is never shown.
+        <T>
+          Claude turns list what was used, the instruction files, skills, and MCP tools Claude Code
+          loaded, and what T3 added. Codex turns show only what T3 sent. The provider's own built-in
+          prompt is never shown.
+        </T>
       </p>
     </div>
   );

@@ -3196,6 +3196,7 @@ describe("ClaudeAdapterV2 native fork", () => {
         prefix: "t3-claude-root-change-",
       });
       const sourceSessionId = "11111111-1111-4111-8111-111111111111";
+      const targetDirectory = NodePath.resolve("/workspace");
       const sourceCursor = "aaaaaaaa-0000-4000-8000-000000000002";
       const projectDir = NodePath.join(configDir, "projects", "-old-workspace");
       yield* fileSystem.makeDirectory(projectDir, { recursive: true });
@@ -3293,7 +3294,7 @@ describe("ClaudeAdapterV2 native fork", () => {
         runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: "full-access",
           interactionMode: "default",
-          cwd: "/workspace",
+          cwd: targetDirectory,
         }),
       });
       const sourceProviderThread = yield* runtime.ensureThread({
@@ -3305,7 +3306,7 @@ describe("ClaudeAdapterV2 native fork", () => {
         runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: "full-access",
           interactionMode: "default",
-          cwd: "/workspace",
+          cwd: targetDirectory,
         }),
       });
       const now = yield* DateTime.now;
@@ -3406,13 +3407,13 @@ describe("ClaudeAdapterV2 native fork", () => {
         runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: "full-access",
           interactionMode: "default",
-          cwd: "/workspace",
+          cwd: targetDirectory,
         }),
       });
 
       assert.equal(openedQueries[0]?.options.resume, forkedSessionId);
       assert.equal(openedQueries[0]?.options.sessionId, undefined);
-      assert.equal(openedQueries[0]?.options.cwd, NodePath.resolve("/workspace"));
+      assert.equal(openedQueries[0]?.options.cwd, targetDirectory);
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -9317,20 +9318,23 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   describe("a model change after a Claude Code update", () => {
-    /** An install as the Claude installer lays it out: one file per version and a link. */
     const makeInstall = Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "claude-program-" });
       const link = NodePath.join(root, "claude");
+      const executableName = (yield* HostProcess.Platform) === "win32" ? "claude.exe" : "claude";
       const install = (version: string) => {
-        const file = NodePath.join(root, version);
+        const directory = NodePath.join(root, version);
+        const file = NodePath.join(directory, executableName);
+        NodeFS.mkdirSync(directory);
         NodeFS.writeFileSync(file, "#!/bin/sh\n", { mode: 0o755 });
-        NodeFS.rmSync(link, { force: true });
-        NodeFS.symlinkSync(file, link);
+        if (NodeFS.existsSync(link)) NodeFS.unlinkSync(link);
+        // A directory junction can be created by a standard Windows user.
+        NodeFS.symlinkSync(directory, link, "junction");
       };
       install("1.0.0");
       return {
-        settings: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath: link },
+        settings: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath: NodePath.join(link, executableName) },
         update: () => install("1.0.1"),
       };
     });
