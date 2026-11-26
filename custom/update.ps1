@@ -15,8 +15,14 @@ param(
   [switch]$NoRebase,
   [switch]$Publish,
   [switch]$Install,
-  [switch]$Force
+  [switch]$Force,
+  [switch]$CheckAdapters,
+  [switch]$PublishBuilt
 )
+
+if ($PublishBuilt -and (-not $Publish -or -not $NoRebase -or $Install)) {
+  throw 'PublishBuilt requires Publish and NoRebase, and cannot install the update.'
+}
 
 # Native tools write progress to stderr; failures are caught by exit code instead.
 $ErrorActionPreference = "Continue"
@@ -24,7 +30,9 @@ $UpstreamRepo = "pingdotgg/t3code"
 $CustomRepo = "santistebanc/t3code-custom"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
-. "$env:APPDATA\vite-plus\env.ps1"
+if (-not (Get-Command vp -ErrorAction SilentlyContinue)) {
+  . "$env:APPDATA\vite-plus\env.ps1"
+}
 # Pick up tools installed since this shell started (Python for node-gyp).
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
   [Environment]::GetEnvironmentVariable("Path", "User") + ";" + $env:Path
@@ -44,7 +52,7 @@ function CustomReleaseExists([string]$name) {
 if ((git branch --show-current) -ne "custom") { throw "Check out the 'custom' branch first." }
 if (git status --porcelain --untracked-files=no) { throw "Commit or stash your changes first." }
 
-Run "Fetching upstream" { git fetch upstream --tags --quiet }
+Run "Fetching upstream" { git fetch upstream --tags --force --quiet }
 
 if (-not $Tag) {
   $Tag = gh release view -R $UpstreamRepo --json tagName -q .tagName
@@ -53,7 +61,8 @@ if (-not $Tag) {
 $base = git rev-parse --verify --quiet refs/custom/base
 if (-not $base) { throw "refs/custom/base is missing. Set it with: git update-ref refs/custom/base <release tag>" }
 
-$target = git rev-parse "$Tag^{commit}"
+$target = git rev-parse --verify "refs/tags/$Tag^{commit}"
+if ($LASTEXITCODE -ne 0) { throw "Could not resolve upstream tag $Tag." }
 if ($Publish -and -not $Force -and -not $NoRebase -and $target -eq $base) {
   if (CustomReleaseExists $Tag) {
     Write-Host "Up to date: $Tag is already published." -ForegroundColor Green
@@ -80,32 +89,59 @@ $baseTag = git tag --points-at refs/custom/base | Where-Object { $_ -match '^v\d
   Select-Object -First 1
 if (-not $baseTag) { throw "refs/custom/base does not point at a release tag." }
 $version = $baseTag.TrimStart("v")
+$releaseDir = Join-Path $repo "release"
+$checkedCommitFile = Join-Path $releaseDir "checked-commit.txt"
 
-Run "Installing dependencies" { vp i }
-Run "Typechecking web" { vp run --filter @t3tools/web typecheck }
-Run "Testing custom changes" {
-  Push-Location apps\web
-  try { vp test run src/components/chat/threadDetailsItems.test.ts } finally { Pop-Location }
-}
-
-# Packaged Windows builds embed the same release's Linux CLI as the WSL runtime.
-$wslDir = Join-Path $repo "release\wsl-runtime"
-$wslArchive = Join-Path $wslDir "t3-$version-linux-x64.tar.gz"
-if (-not (Test-Path $wslArchive)) {
-  New-Item -ItemType Directory -Force $wslDir | Out-Null
-  Run "Downloading WSL runtime for $baseTag" {
-    gh release download $baseTag -R $UpstreamRepo -p "t3-$version-linux-x64.tar.gz" -D $wslDir --clobber
+if ($PublishBuilt) {
+  $checkedCommit = Get-Content -LiteralPath $checkedCommitFile -ErrorAction Stop
+  if ($checkedCommit -ne (git rev-parse HEAD) -or $LASTEXITCODE -ne 0) {
+    throw 'The checked build does not match the current commit.'
   }
 }
 
-# The installed app updates from this repo's releases, never from the official ones.
-$env:T3CODE_DESKTOP_UPDATE_REPOSITORY = $CustomRepo
-$env:T3CODE_DESKTOP_VERSION = $version
-$env:T3CODE_DESKTOP_WSL_RUNTIME = $wslArchive
-Remove-Item Env:GITHUB_REPOSITORY -ErrorAction SilentlyContinue
-$releaseDir = Join-Path $repo "release"
-Get-ChildItem $releaseDir -File -ErrorAction SilentlyContinue | Remove-Item
-Run "Building the Windows installer ($version)" { vp run dist:desktop:win:x64 }
+if (-not $PublishBuilt) {
+  if (Test-Path -LiteralPath $checkedCommitFile) {
+    Remove-Item -LiteralPath $checkedCommitFile -ErrorAction Stop
+  }
+  Run "Installing dependencies" { vp i }
+  Run "Typechecking web" { vp run --filter @t3tools/web typecheck }
+  Run "Testing custom changes" {
+    Push-Location apps\web
+    try { vp test run src/components/chat/threadDetailsItems.test.ts } finally { Pop-Location }
+  }
+  if ($CheckAdapters) {
+    Run "Typechecking server" { vp run --filter t3 typecheck }
+    Run "Testing provider adapters" {
+      Push-Location apps\server
+      try {
+        vp test run src/orchestration-v2/Adapters/CodexAdapterV2.test.ts src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+      } finally { Pop-Location }
+    }
+  }
+
+  # Packaged Windows builds embed the same release's Linux CLI as the WSL runtime.
+  $wslDir = Join-Path $repo "release\wsl-runtime"
+  $wslArchive = Join-Path $wslDir "t3-$version-linux-x64.tar.gz"
+  if (-not (Test-Path $wslArchive)) {
+    New-Item -ItemType Directory -Force $wslDir | Out-Null
+    Run "Downloading WSL runtime for $baseTag" {
+      gh release download $baseTag -R $UpstreamRepo -p "t3-$version-linux-x64.tar.gz" -D $wslDir --clobber
+    }
+  }
+
+  # The installed app updates from this repo's releases, never from the official ones.
+  $env:T3CODE_DESKTOP_UPDATE_REPOSITORY = $CustomRepo
+  $env:T3CODE_DESKTOP_VERSION = $version
+  $env:T3CODE_DESKTOP_WSL_RUNTIME = $wslArchive
+  Remove-Item Env:GITHUB_REPOSITORY -ErrorAction SilentlyContinue
+  Get-ChildItem $releaseDir -File -ErrorAction SilentlyContinue | Remove-Item
+  Run "Building the Windows installer ($version)" { vp run dist:desktop:win:x64 }
+  if ($CheckAdapters) {
+    $checkedCommit = git rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not identify the checked commit.' }
+    Set-Content -LiteralPath $checkedCommitFile -Value $checkedCommit -ErrorAction Stop
+  }
+}
 
 $installer = Get-ChildItem $releaseDir -Filter "*$version*x64*.exe" | Select-Object -First 1
 if (-not $installer) { throw "Build finished but no installer was found in release\." }
@@ -114,13 +150,16 @@ Write-Host "Built $($installer.FullName)" -ForegroundColor Green
 if ($Publish) {
   $assets = @($installer.FullName, "$($installer.FullName).blockmap", (Join-Path $releaseDir "latest.yml"))
   foreach ($asset in $assets) { if (-not (Test-Path $asset)) { throw "Missing release asset $asset" } }
+  if ($PublishBuilt -and (CustomReleaseExists $baseTag)) {
+    throw "$baseTag is already published. Keep the existing release."
+  }
   Run "Pushing the custom branch" { git push --force-with-lease origin custom }
-  if (CustomReleaseExists $baseTag) {
+  if (-not $PublishBuilt -and (CustomReleaseExists $baseTag)) {
     Run "Removing the previous $baseTag release" { gh release delete $baseTag -R $CustomRepo --yes --cleanup-tag }
   }
   $notes = "Custom build of the official $baseTag release, with the commits on the custom branch."
   Run "Publishing release $baseTag" {
-    gh release create $baseTag -R $CustomRepo --target (git rev-parse custom) --title "T3 Code Custom $version" --notes $notes @assets
+    gh release create $baseTag -R $CustomRepo --target (git rev-parse refs/heads/custom) --title "T3 Code Custom $version" --notes $notes @assets
   }
 }
 
