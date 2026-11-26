@@ -26,23 +26,26 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
+      - name: Check out the source branch
+        run: |
+          git init
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git config core.longpaths true
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git remote add origin "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git fetch --no-tags origin "+refs/heads/${env:GITHUB_REF_NAME}:refs/remotes/origin/${env:GITHUB_REF_NAME}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git switch -c custom "refs/remotes/origin/$env:GITHUB_REF_NAME"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Find the next release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git switch -C custom
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $target = gh release view -R pingdotgg/t3code --json tagName --jq .tagName
           if ($LASTEXITCODE -ne 0 -or $target -notmatch '^v\d+\.\d+\.\d+$') {
             throw 'Could not find the latest official stable release.'
