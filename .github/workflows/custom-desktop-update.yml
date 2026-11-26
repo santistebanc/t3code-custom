@@ -1,0 +1,108 @@
+name: Custom desktop update
+
+on:
+  schedule:
+    - cron: "37 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the Windows update after the build passes
+        type: boolean
+        default: false
+
+concurrency:
+  group: custom-desktop-update
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.repository == 'santistebanc/t3code-custom' && github.ref_name == github.event.repository.default_branch
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: custom
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find the next release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $target = gh release view -R pingdotgg/t3code --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0 -or $target -notmatch '^v\d+\.\d+\.\d+$') {
+            throw 'Could not find the latest official stable release.'
+          }
+          $published = gh release view -R $env:GITHUB_REPOSITORY --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0 -or $published -notmatch '^v\d+\.\d+\.\d+$') {
+            throw 'Could not find the latest published custom release.'
+          }
+          if ([version]$target.Substring(1) -le [version]$published.Substring(1)) {
+            Write-Host "Up to date: $published is already published."
+            exit 0
+          }
+          git remote add upstream https://github.com/pingdotgg/t3code.git
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git fetch --no-tags upstream "+refs/tags/${target}:refs/tags/${target}" "+refs/tags/${published}:refs/tags/${published}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git merge-base --is-ancestor "refs/tags/$target" HEAD
+          if ($LASTEXITCODE -eq 0) {
+            $base = "refs/tags/$target"
+          } else {
+            $tree = git rev-parse "refs/tags/$published^{tree}"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            # The published fork can have the official tree under a rewritten commit ID.
+            $base = git log --first-parent --max-count=200 --format="%T %H" |
+              Where-Object { $_.StartsWith("$tree ") } |
+              Select-Object -First 1 |
+              ForEach-Object { ($_ -split ' ')[1] }
+            if (-not $base) { throw "Could not find the official $published base in custom." }
+          }
+          git update-ref refs/custom/base $base
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          "tag=$target" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Vite+
+        if: steps.release.outputs.tag != ''
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Rebase, check, and build
+        if: steps.release.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          & ./custom/update.ps1 -Tag $env:RELEASE_TAG -CheckAdapters
+          if ($LASTEXITCODE -eq 2) {
+            git diff --name-only --diff-filter=U
+            Write-Output '::error::The custom changes conflict with the official release. Resolve the rebase on the custom branch and run the update again.'
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish the checked update
+        if: steps.release.outputs.tag != '' && (github.event_name == 'schedule' || inputs.publish)
+        env:
+          GH_TOKEN: ${{ secrets.CUSTOM_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if (-not $env:GH_TOKEN) {
+            throw 'Set CUSTOM_RELEASE_TOKEN with Contents and Workflows write access to this repository.'
+          }
+          gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./custom/update.ps1 -Tag $env:RELEASE_TAG -NoRebase -Publish -PublishBuilt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
