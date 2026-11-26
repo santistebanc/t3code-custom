@@ -1260,6 +1260,7 @@ export const make = Effect.gen(function* () {
             ...(fileName === undefined ? {} : { fileName }),
           },
           input.sinceMs - MTIME_SLACK_MS,
+          false,
         );
         for (const file of scanned.files ?? []) {
           for (const raw of file.records) {

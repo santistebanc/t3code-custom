@@ -7,12 +7,9 @@ import type {
   ThreadId,
   ThreadUsageAccountEstimate,
 } from "@t3tools/contracts";
-import {
-  collectProviderUsageLimits,
-  formatDuration,
-  remainingPercent,
-  resetCreditChoices,
-} from "@t3tools/shared/usageLimits";
+import { collectProviderUsageLimits, remainingPercent } from "@t3tools/shared/usageLimits";
+import { formatDuration, resetCreditChoices } from "@t3tools/shared/usageLimitsCopy";
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon, RotateCwIcon, TicketIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -91,6 +88,7 @@ export function AllProvidersUsage({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | null;
 }) {
+  const gt = useGT();
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
   const { data: estimate } = useEnvironmentQuery(
@@ -149,7 +147,7 @@ export function AllProvidersUsage({
   return (
     <ThreadDetailsSection
       headingId="thread-details-usage-heading"
-      title="Usage limits"
+      title={gt("Usage limits")}
       showHeading={false}
     >
       <div className="flex flex-col gap-1.5">
@@ -164,8 +162,10 @@ export function AllProvidersUsage({
           >
             <ChevronDownIcon className={cn(showAll && "rotate-180")} aria-hidden />
             {showAll
-              ? "Hide other accounts"
-              : `${hidden} more ${hidden === 1 ? "account" : "accounts"}`}
+              ? gt("Hide other accounts")
+              : hidden === 1
+                ? gt("1 more account")
+                : gt("{count} more accounts", { count: hidden })}
           </Button>
         ) : null}
       </div>
@@ -194,6 +194,7 @@ function AccountUsageRow({
   readonly estimate: ThreadUsageAccountEstimate | undefined;
   readonly now: number;
 }) {
+  const gt = useGT();
   const color = normalizeProviderAccentColor(entry.accentColor) ?? barColor(entry.driverKind);
   const threadPercent = (window: ServerProviderUsageWindow) =>
     estimate?.windows.find((candidate) => candidate.id === window.id)?.threadPercent ?? null;
@@ -236,7 +237,7 @@ function AccountUsageRow({
           />
         </span>
         {shownPrimary?.resetsAt || secondary?.resetsAt ? (
-          <RotateCwIcon aria-label="Resets" className="ms-1 size-3 shrink-0" />
+          <RotateCwIcon aria-label={gt("Resets")} className="ms-1 size-3 shrink-0" />
         ) : null}
         {shownPrimary ? (
           <ResetTime window={shownPrimary} now={now} className="font-medium text-foreground" />
@@ -268,7 +269,7 @@ function AccountUsageRow({
             render={
               <button
                 type="button"
-                aria-label={`${label}: usage by prompt`}
+                aria-label={gt("{label}: usage by prompt", { label })}
                 className="block w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               />
             }
@@ -402,6 +403,7 @@ function ResetTicketButton({
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
 }) {
+  const gt = useGT();
   const { canManageProviders, choice, confirming, setConfirming, confirm, busy, status, redeem } =
     useResetCredit(environmentId);
   const next = resetCreditChoices(credits, input, now).find((option) => option.availableCount > 0);
@@ -419,10 +421,10 @@ function ResetTicketButton({
           }
         >
           {busy ? (
-            "Using…"
+            gt("Using…")
           ) : (
             <>
-              <TicketIcon aria-label="Use a reset credit" /> {credits.availableCount}
+              <TicketIcon aria-label={gt("Use a reset credit")} /> {credits.availableCount}
             </>
           )}
         </TooltipTrigger>
@@ -453,6 +455,7 @@ function PromptBreakdown({
   readonly estimate: ThreadUsageAccountEstimate;
   readonly sessionWindowId: string | null;
 }) {
+  const gt = useGT();
   const session = estimate.windows.find((window) => window.id === sessionWindowId);
   const sessionStart = session ? Date.parse(session.startsAt) : null;
   const maxCost = Math.max(...estimate.prompts.map((prompt) => prompt.costUsd), 0);
@@ -463,11 +466,13 @@ function PromptBreakdown({
   return (
     <div className="flex flex-col gap-0.5 text-xs">
       <div className="mb-1.5 flex items-baseline gap-2">
-        <span className="font-medium">Session usage by prompt</span>
+        <span className="font-medium">
+          <T>Session usage by prompt</T>
+        </span>
         <span className="truncate text-muted-foreground">
           {label}
           {session?.threadPercent != null
-            ? ` · this thread ~${formatPercent(session.threadPercent)}`
+            ? gt(" · this thread ~{percent}", { percent: formatPercent(session.threadPercent) })
             : ""}
         </span>
       </div>
@@ -477,7 +482,7 @@ function PromptBreakdown({
             {index === dividerIndex && session ? (
               <div className="my-1.5 flex items-center gap-1.5 text-2xs text-muted-foreground after:h-px after:flex-1 after:bg-border">
                 <RotateCwIcon aria-hidden className="size-2.5" />
-                Before {timeFormatter.format(Date.parse(session.startsAt))}
+                {gt("Before {time}", { time: timeFormatter.format(Date.parse(session.startsAt)) })}
               </div>
             ) : null}
             <Tooltip>
@@ -490,7 +495,7 @@ function PromptBreakdown({
                 }
               >
                 <span className="truncate text-foreground/85">
-                  {prompt.title || "Untitled prompt"}
+                  {prompt.title || gt("Untitled prompt")}
                 </span>
                 <span className="h-1.5">
                   <span
@@ -511,16 +516,21 @@ function PromptBreakdown({
                 <div className="flex flex-col gap-0.5 tabular-nums">
                   {prompt.sessionPercent !== null ? (
                     <span className="text-foreground">
-                      ~{formatPercent(prompt.sessionPercent)} of session
+                      {gt("~{percent} of session", {
+                        percent: formatPercent(prompt.sessionPercent),
+                      })}
                     </span>
                   ) : null}
                   <span className="text-muted-foreground">
-                    {formatTokens(prompt.inputTokens)} in · {formatTokens(prompt.cachedInputTokens)}{" "}
-                    cached · {formatTokens(prompt.cacheWriteTokens)} written ·{" "}
-                    {formatTokens(prompt.outputTokens)} out
+                    {gt("{input} in · {cached} cached · {written} written · {output} out", {
+                      input: formatTokens(prompt.inputTokens),
+                      cached: formatTokens(prompt.cachedInputTokens),
+                      written: formatTokens(prompt.cacheWriteTokens),
+                      output: formatTokens(prompt.outputTokens),
+                    })}
                   </span>
                   <span className="text-muted-foreground">
-                    ≈ ${prompt.costUsd.toFixed(2)} API-equivalent
+                    {gt("≈ ${cost} API-equivalent", { cost: prompt.costUsd.toFixed(2) })}
                   </span>
                 </div>
               </TooltipPopup>
@@ -529,7 +539,7 @@ function PromptBreakdown({
         ))}
       </div>
       <span className="mt-1.5 text-2xs text-muted-foreground">
-        Estimated from each prompt's tokens.
+        <T>Estimated from each prompt's tokens.</T>
       </span>
     </div>
   );

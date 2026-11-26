@@ -110,13 +110,13 @@ if (-not $PublishBuilt) {
     try { vp test run src/components/chat/threadDetailsItems.test.ts } finally { Pop-Location }
   }
   if ($CheckAdapters) {
-    Run "Typechecking server" { vp run --filter t3 typecheck }
-    Run "Testing provider adapters" {
-      Push-Location apps\server
-      try {
+    Push-Location apps\server
+    try {
+      Run "Typechecking server" { vp exec effect-tsgo tsrs --noEmit }
+      Run "Testing provider adapters" {
         vp test run src/orchestration-v2/Adapters/CodexAdapterV2.test.ts src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-      } finally { Pop-Location }
-    }
+      }
+    } finally { Pop-Location }
   }
 
   # Packaged Windows builds embed the same release's Linux CLI as the WSL runtime.

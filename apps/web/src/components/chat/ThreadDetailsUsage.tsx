@@ -187,7 +187,9 @@ export function ThreadDetailsContext({
                 </span>
               ) : null}
               {threadRef ? (
-                <span className="text-muted-foreground">Click to inspect prompt context</span>
+                <span className="text-muted-foreground">
+                  {gt("Click to inspect prompt context")}
+                </span>
               ) : null}
             </>
           }
@@ -346,7 +348,7 @@ function UsageRow({
     "aria-label": gt("{label}: {value}", { label, value: ariaValue }),
     className: cn(
       "col-span-3 grid h-6 grid-cols-subgrid items-center rounded-lg px-2.5 text-start outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
-      (opensUsage || onClick)
+      opensUsage || onClick
         ? "group cursor-pointer active:bg-black/[0.06] dark:active:bg-white/[0.12]"
         : "cursor-default",
     ),
